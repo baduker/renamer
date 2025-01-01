@@ -15,7 +15,7 @@ use version;
 
 binmode STDOUT, ':encoding(utf8)';
 
-our $VERSION     = qv('1.1.0');
+our $VERSION     = qv('1.1.1');
 our $TOTAL_FILES = 0;
 
 sub sanitize_file_name {
@@ -103,7 +103,7 @@ sub main {
         'ext=s'     => \$extension,
         'help'      => \$help,
         'version'   => sub {
-            print "renamer v$VERSION on $Config{osname} at $Config{archname}\n";
+            print "renamer v$VERSION\n";
             exit;
         }
     ) or die "Error in command line arguments\n";
@@ -116,6 +116,7 @@ Options:
   --replace=CHAR     Replace spaces with specified CHAR (default: underscore)
   --ext=EXTENSION    Process files with specified EXTENSION (default: pdf)
   --help             Display this help message
+  --version          Display version information and exit
 USAGE
         exit;
     }
@@ -169,6 +170,7 @@ renamer [options] TARGET
     --replace=CHAR     Replace spaces with specified CHAR (default: underscore)
     --ext=EXTENSION    Process files with specified EXTENSION (default: pdf)
     --help             Display this help message
+    --version          Display version information and exit
 
 =head1 DESCRIPTION
 
@@ -179,7 +181,7 @@ as an argument and renames the files in the directory or the file itself.
 By default, it uses an underscore (_) as the replacement character, but you can
 specify a different one.
 
-Also, the default file extension is C<pdf>, but this can be changed, too.
+Also, the default file extension is C<.pdf>, but this can be changed, too.
 
 =head1 USAGE
 
