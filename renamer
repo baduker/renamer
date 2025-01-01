@@ -9,23 +9,17 @@ use English qw(-no_match_vars);
 use Pod::Usage;
 use Getopt::Long qw(GetOptions);
 use File::Find   qw(find);
-use File::Copy;
-# -> External modules
 use Path::Tiny;
-use Text::Table ();
-# <- External modules
 
 use version;
 
 binmode STDOUT, ':encoding(utf8)';
 
-our $VERSION = qv('1.0.0');
+our $VERSION     = qv('1.1.0');
 our $TOTAL_FILES = 0;
-our @TABLE_LOAD;
-
 
 sub sanitize_file_name {
-    my ($file_name, $replace_char) = @_;
+    my ( $file_name, $replace_char ) = @_;
 
     # Remove spaces
     $file_name =~ s/\s+/$replace_char/g;
@@ -48,7 +42,6 @@ sub sanitize_file_name {
     return $file_name;
 }
 
-
 # Function to get the file name from a path
 sub get_file_name {
     my ($file) = @_;
@@ -58,177 +51,115 @@ sub get_file_name {
 
 # Function to rename the file
 sub rename_file {
-    my ($old_name, $new_name) = @_;
+    my ( $old_name, $new_name ) = @_;
     my $old_file_name = get_file_name($old_name);
     my $new_file_name = get_file_name($new_name);
 
-    if ($old_file_name ne $new_file_name) {
-        rename $old_name, $new_name;
-        $TOTAL_FILES++;
-        push @TABLE_LOAD, [$TOTAL_FILES, $old_file_name, $new_file_name];
+    # Skip if there is no change needed
+    if ( $old_file_name eq $new_file_name ) {
+        # The file is already sanitized or no changes needed
+        return;
     }
-    return 0;
+
+    rename $old_name, $new_name
+        or warn "Could not rename '$old_name' to '$new_name': $!\n";
+
+    $TOTAL_FILES++;
+    print "Renamed: '$old_file_name' -> '$new_file_name'\n";
 }
 
-# Function to process files in a directory
+# Process files in a directory
 sub process_files {
-    my ($file, $extension, $replace_char) = @_;
+    my ( $file, $extension, $replace_char ) = @_;
 
     my $full_path = path($file)->absolute;
 
     # Handle upward directory path (../<FOLDER_NAME>) and rename the files there too
-    if ($file =~ /\.\.$/) {
+    if ( $file =~ /\.\.$/ ) {
         my $parent_dir = path($file)->parent;
-        print "Processing directory: '$parent_dir'\n"
-            or die "Cannot print to STDOUT\n";
-        my $new_file_name = sanitize_file_name($file, $replace_char);
-        rename_file($full_path, $new_file_name);
-        return 0;
+        print "Processing directory: '$parent_dir'\n";
+        my $new_file_name = sanitize_file_name( $file, $replace_char );
+        rename_file( $full_path, $new_file_name );
+        return;
     }
 
     return unless -f $file;
     return unless $file =~ /\.(?:$extension)$/i;
 
-    my $new_file_name = sanitize_file_name($file, $replace_char);
-    rename_file($full_path, $new_file_name);
-    return 0;
-}
+    # Create the sanitized filename
+    my $new_file_name = sanitize_file_name( $file, $replace_char );
 
-sub print_table {
-    my ($payload) = @_;
-    my @cols = ("Old Name","New Name");
-    my $sep = \'│';
-
-    my $major_sep = \'║';
-    my $tb = Text::Table->new( $sep, " Number ", $major_sep,
-        ( map { +( ( ref($_) ? $_ : " $_ " ), $sep ) } @cols ) );
-
-    my $num_cols = @cols;
-
-    $tb->load( @{$payload} );
-
-    my $make_rule = sub {
-        my ($args) = @_;
-
-        my $left      = $args->{left};
-        my $right     = $args->{right};
-        my $main_left = $args->{main_left};
-        my $middle    = $args->{middle};
-
-        return $tb->rule(
-            sub {
-                my ( $index, $len ) = @_;
-
-                return ( '─' x $len );
-            },
-            sub {
-                my ( $index, $len ) = @_;
-
-                my $char = (
-                      ( $index == 0 )             ? $left
-                    : ( $index == 1 )             ? $main_left
-                    : ( $index == $num_cols + 1 ) ? $right
-                    :                               $middle
-                );
-
-                return $char x $len;
-            },
-        );
-    };
-
-    my $start_rule = $make_rule->(
-        {
-            left      => '┌',
-            main_left => '╥',
-            right     => '┐',
-            middle    => '┬',
-        }
-    );
-
-    my $mid_rule = $make_rule->(
-        {
-            left      => '├',
-            main_left => '╫',
-            right     => '┤',
-            middle    => '┼',
-        }
-    );
-
-    my $end_rule = $make_rule->(
-        {
-            left      => '└',
-            main_left => '╨',
-            right     => '┘',
-            middle    => '┴',
-        }
-    );
-
-    print $start_rule, $tb->title,
-        ( map { $mid_rule, $_, } $tb->body() ), $end_rule;
+    rename_file( $full_path, $new_file_name );
 }
 
 sub main {
     my $replace_char = '_'; # Default replacement character
-    my $extension = 'pdf';  # Default file extension
+    my $extension    = 'pdf';  # Default file extension
     my $help;
 
     # Parse command line options
     GetOptions(
         'replace=s' => \$replace_char,
-        'ext=s' => \$extension,
-        'help' => \$help,
-        'version' => sub {
+        'ext=s'     => \$extension,
+        'help'      => \$help,
+        'version'   => sub {
             print "renamer v$VERSION on $Config{osname} at $Config{archname}\n";
-            exit
+            exit;
         }
     ) or die "Error in command line arguments\n";
 
     # Display help message
-    if (defined $help) {
-        print "Usage: $EXECUTABLE_NAME [options] DIRECTORY\n";
-        print "Options:\n";
-        print "  --replace=CHAR     Replace spaces with specified CHAR (default: underscore)\n";
-        print "  --ext=EXTENSION    Process files with specified EXTENSION (default: pdf)\n";
-        print "  --help             Display this help message\n";
+    if ($help) {
+        print <<"USAGE";
+Usage: $EXECUTABLE_NAME [options] DIRECTORY
+Options:
+  --replace=CHAR     Replace spaces with specified CHAR (default: underscore)
+  --ext=EXTENSION    Process files with specified EXTENSION (default: pdf)
+  --help             Display this help message
+USAGE
         exit;
     }
 
-    # Check if a directory is provided
-    if (@ARGV != 1) {
-        print "Error: No directory provided\n";
+    # Check if a directory (or single file) is provided
+    if ( @ARGV != 1 ) {
+        print "Error: No directory (or file) provided\n";
         die "Usage: $EXECUTABLE_NAME [options] DIRECTORY\n";
     }
 
     my $target = $ARGV[0];
 
-    if (-f $target) {
-        process_files($target, $extension, $replace_char);
+    if ( -f $target ) {
+        process_files( $target, $extension, $replace_char );
         print "Total files renamed: $TOTAL_FILES\n";
         exit;
     }
 
     # Check if the directory exists
-    if (-d $target) {
-        # TODO: Skip hidden directories
+    if ( -d $target ) {
+        # Walk the directory and process each file
         find(
-            sub { process_files($File::Find::name, $extension, $replace_char) },
+            sub {
+                process_files( $File::Find::name, $extension, $replace_char );
+            },
             $target
         );
 
-        if ($TOTAL_FILES == 0) {
-            print "No files found with extension: $extension\n";
-        } else {
-            print_table(\@TABLE_LOAD);
+        if ( $TOTAL_FILES == 0 ) {
+            print "No files found or no renaming needed for extension: $extension\n";
+        }
+        else {
             print "Total files renamed: $TOTAL_FILES\n";
         }
-    } else {
-        die "Error: Directory '$target' not found\n";
     }
-    return 0;
+    else {
+        die "Error: '$target' is not a valid file or directory\n";
+    }
+    return;
 }
 
 main();
 
+__END__
 
 =head1 SYNOPSIS
 
@@ -242,16 +173,13 @@ renamer [options] TARGET
 =head1 DESCRIPTION
 
 A file renaming utility tool that gets rid of spaces, commas, dots, and dashes
-either in a single file or a folder of files.
-It takes a directory or a file as an argument and renames the files in the
-directory or the file itself.
+either in a single file or a folder of files. It takes a directory or a file
+as an argument and renames the files in the directory or the file itself.
 
-By default it uses the underscore (_) as the replacement character, but you can
+By default, it uses an underscore (_) as the replacement character, but you can
 specify a different one.
 
-Also, the default file extension is pdf, but this can be changed, too.
-
-Check EXAMPLES section for more information on how to use the tool.
+Also, the default file extension is C<pdf>, but this can be changed, too.
 
 =head1 USAGE
 
@@ -259,14 +187,13 @@ Check EXAMPLES section for more information on how to use the tool.
 
 =head1 INSTALLATION
 
-Install the following dependencies:
+Install the following dependencies if not already present:
 
     cpan Path::Tiny
-    cpan Text::Table
 
 =head1 EXAMPLES
 
-    renamer  /home/user/Documents
+    renamer /home/user/Documents
 
     renamer --replace=# --ext=txt /dir
 
@@ -284,24 +211,23 @@ baduker <baduker@protonmail.ch>
 
 MIT License
 
-Copyright (c) 2023 baduker
+Copyright (c) 2025 baduker
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 =cut
